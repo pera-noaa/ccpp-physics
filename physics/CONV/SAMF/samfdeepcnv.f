@@ -76,7 +76,7 @@
 !!  \section samfdeep_detailed GFS samfdeepcnv Detailed Algorithm
       subroutine samfdeepcnv_run (im,km,nn,first_time_step,restart,
      &    tmf,qmicro,itc,ntc,cliq,cp,cvap,                              
-     &    eps,epsm1,fv,grav,hvap,rd,rv,                                 
+     &    eps,epsm1,fv,grav,hvap,hfus,rd,rv,                            
      &    t0c,delt,ntk,ntr,delp, ten_t, ten_u, ten_v, ten_q,            
      &    prslp,psp,phil,tkeh,qtr,dqtr,prevsq,q,q1,t1,u1,v1,fscav,      
      &    hwrf_samfdeep,progsigma,progomega,cldwrk,rn,kbot,ktop,kcnv,   
@@ -94,6 +94,7 @@
       use funcphys , only : fpvs
 
       implicit none
+      real(kind=kind_phys), intent(in) :: hfus
 !
       integer, intent(in)  :: im, km, nn, itc, ntc, ntk, ntr, ncloud
       integer, intent(in)  :: islimsk(:)
@@ -300,6 +301,8 @@ c  cloud water
       real(kind=conv_wp) tsumn(im), tsump(im), rtnp(im)
 !
       logical do_aerosols, totflg, cnvflg(im), asqecflg(im), flg(im)
+!  columns the cellular-automaton trigger can turn on again (ca_trigger)
+      logical caon(im)
 !
 !    asqecflg: flag for the quasi-equilibrium assumption of Arakawa-Schubert
 !
@@ -400,6 +403,9 @@ c
       wet_dep = 0.0_conv_wp
 !
       do i=1,im
+        caon(i) = .false.
+        if(do_ca .and. ca_trigger) caon(i) =
+     &    real(ca_deep(i), kind=conv_wp) > real(nthresh, kind=conv_wp)
          cnvflg(i) = .true.
          shallow_veto(i) = .false.
         if(do_mynnedmf) then
@@ -837,7 +843,9 @@ c
       if(.not.progomega)then
          totflg = .true.
          do i=1,im
+!  no early return while a later ca_trigger re-enable can still turn a column on
             totflg = totflg .and. (.not. cnvflg(i))
+     &               .and. (.not. caon(i))
          enddo
          if(totflg) return
       endif
@@ -900,7 +908,9 @@ c
       if(.not.progomega)then
          totflg = .true.
          do i=1,im
+!  no early return while a later ca_trigger re-enable can still turn a column on
             totflg = totflg .and. (.not. cnvflg(i))
+     &               .and. (.not. caon(i))
          enddo
          if(totflg) return
       endif
@@ -957,7 +967,9 @@ c
       if(.not.progomega)then
          totflg = .true.
          do i=1,im
+!  no early return while a later ca_trigger re-enable can still turn a column on
             totflg = totflg .and. (.not. cnvflg(i))
+     &               .and. (.not. caon(i))
          enddo
          if(totflg) return
       endif
@@ -1007,7 +1019,9 @@ c
       if(.not.progomega)then
          totflg = .true.
          do i=1,im
+!  no early return while a later ca_trigger re-enable can still turn a column on
             totflg = totflg .and. (.not. cnvflg(i))
+     &               .and. (.not. caon(i))
          enddo
          if(totflg) return
       endif
@@ -1359,7 +1373,7 @@ c
                    chem_c(i,k,n) = real(fscav(n), kind=conv_wp)
      &                           * ecko(i,k,kk)
                    tem = chem_c(i,k,n) / (1.0_conv_wp + c0t(i,k) * dz)
-                   chem_pw(i,k,n) = c0t(i,k) * dz * tem * eta(i,k-1)
+                   chem_pw(i,k,n) = c0t(i,k) * dz * tem * eta(i,k)
                    ecko(i,k,kk) = tem + ecko(i,k,kk) - chem_c(i,k,n)
                  endif
                endif
@@ -1432,7 +1446,9 @@ c
       if(.not.progomega)then
          totflg = .true.
          do i = 1, im
+!  no early return while a later ca_trigger re-enable can still turn a column on
             totflg = totflg .and. (.not. cnvflg(i))
+     &               .and. (.not. caon(i))
          enddo
          if(totflg) return
       endif
@@ -1518,7 +1534,9 @@ c
       if(.not.progomega)then
          totflg = .true.
          do i=1,im
+!  no early return while a later ca_trigger re-enable can still turn a column on
             totflg = totflg .and. (.not. cnvflg(i))
+     &               .and. (.not. caon(i))
          enddo
          if(totflg) return
       endif
@@ -3547,9 +3565,9 @@ c
                       wet_dep(i,k,n) = wet_dep(i,k,n) - tem
                       new_qtr(i,k,kk) = 0.0_conv_wp
                     else
-                      wet_dep(i,k,n) = 0.0_conv_wp
                       new_qtr(i,k,kk) = new_qtr(i,k,kk)
      &                                + wet_dep(i,k,n) / dp
+                      wet_dep(i,k,n) = 0.0_conv_wp
                     endif
                   endif
                 endif
@@ -3765,6 +3783,9 @@ c
                 new_qtr(i,k,1) = new_qtr(i,k,1) + tem * tem1  ! ice
                 new_qtr(i,k,2) = new_qtr(i,k,2) + tem * (1.0_conv_wp
      &                         - tem1) ! water
+!               freezing of the ice part releases hfus (h is liquid-referenced)
+                new_t1(i,k) = new_t1(i,k) + real(hfus, kind=conv_wp)
+     &                      / real(cp, kind=conv_wp) * tem * tem1
               else
                 new_qtr(i,k,1) = new_qtr(i,k,1) + tem
               endif

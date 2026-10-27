@@ -1220,7 +1220,8 @@ subroutine mpdrv (hydrostatic, ua, va, wa, delp, pt, qv, ql, qr, qi, qs, qg, &
                 q_cond = qlz (k) + qrz (k) + qiz (k) + qsz (k) + qgz (k)
                 con_r8 = one_r8 + qvz (k) + q_cond
             else
-                con_r8 = one_r8 + qvz (k)
+                ! back to specific ratios on the input mass basis
+                con_r8 = one_r8 / (one_r8 - qv (i, k))
             endif
 
             delp (i, k) = dp (k) * con_r8
@@ -2342,7 +2343,12 @@ subroutine terminal_fall (dts, ks, ke, tz, qv, ql, qr, qi, qs, qg, dz, dp, &
     ! -----------------------------------------------------------------------
 
     if (do_sedi_heat) then
-        call sedi_heat (ks, ke, dp, m1, dz, tz, qv, ql, qr, qi, qs, qg, c_ice)
+        ! rain and cloud water fall with the liquid heat capacity
+        if (qflag .eq. "qr" .or. qflag .eq. "ql") then
+            call sedi_heat (ks, ke, dp, m1, dz, tz, qv, ql, qr, qi, qs, qg, c_liq)
+        else
+            call sedi_heat (ks, ke, dp, m1, dz, tz, qv, ql, qr, qi, qs, qg, c_ice)
+        endif
     endif
 
     ! -----------------------------------------------------------------------

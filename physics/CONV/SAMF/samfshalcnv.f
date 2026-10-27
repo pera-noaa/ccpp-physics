@@ -52,7 +52,7 @@
 !!  -# For the "feedback control", calculate updated values of the state variables by multiplying the cloud base mass flux and the tendencies calculated per unit cloud base mass flux from the static control.
 !!  \section det_samfshalcnv GFS samfshalcnv Detailed Algorithm
       subroutine samfshalcnv_run(im,km,nn,itc,ntc,cliq,cp,cvap,            &
-     &     eps,epsm1,fv,grav,hvap,rd,rv,                                &
+     &     eps,epsm1,fv,grav,hvap,hfus,rd,rv,                           &
      &     t0c,delt,ntk,ntr,delp,first_time_step,restart,               & 
      &     tmf,qmicro,progsigma,progomega,                              &
      &     prslp,psp,phil,tkeh,qtr,dqtr,prevsq,q,q1,t1,u1,v1,fscav,     &
@@ -66,6 +66,7 @@
       use funcphys , only : fpvs
 
       implicit none
+      real(kind=kind_phys), intent(in) :: hfus
 !
       integer, intent(in)  :: im, km, nn, itc, ntc, ntk, ntr, ncloud
       integer, intent(in)  :: islimsk(:)
@@ -1160,7 +1161,7 @@ c
                    chem_c(i,k,n) = escav * real(fscav(n), kind=conv_wp)
      &                            * ecko(i,k,kk)
                    tem = chem_c(i,k,n) / (1.0_conv_wp + c0t(i,k) * dz)
-                   chem_pw(i,k,n) = c0t(i,k) * dz * tem * eta(i,k-1)
+                   chem_pw(i,k,n) = c0t(i,k) * dz * tem * eta(i,k)
                    ecko(i,k,kk) = tem + ecko(i,k,kk) - chem_c(i,k,n)
                  endif
                endif
@@ -2496,9 +2497,9 @@ c
                       wet_dep(i,k,n) = wet_dep(i,k,n) - tem
                       new_qtr(i,k,kk) = 0.0_conv_wp
                     else
-                      wet_dep(i,k,n) = 0.0_conv_wp
                       new_qtr(i,k,kk) = new_qtr(i,k,kk) + wet_dep(i,k,n)
      &                                / dp
+                      wet_dep(i,k,n) = 0.0_conv_wp
                     endif
                   endif
                 endif
@@ -2694,6 +2695,9 @@ c
               if (new_qtr(i,k,2) > -999.0_conv_wp) then
                 ! Ice
                 new_qtr(i,k,1) = new_qtr(i,k,1) + tem * tem1
+!               freezing of the ice part releases hfus (h is liquid-referenced)
+                new_t1(i,k) = new_t1(i,k) + real(hfus, kind=conv_wp)
+     &                      / real(cp, kind=conv_wp) * tem * tem1
                 ! Water
                 new_qtr(i,k,2) = new_qtr(i,k,2) + tem * (1.0_conv_wp
      &                         - tem1)
